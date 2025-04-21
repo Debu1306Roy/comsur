@@ -1,0 +1,1331 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Internal Communications Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            padding: 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .dashboard-main {
+            flex: 1;
+            min-width: 800px;
+        }
+        .planner-section {
+            width: 300px;
+            background-color: #f8f8f8;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .planner-section h2 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            color: #333;
+            border-bottom: 2px solid #ddd;
+            padding-bottom: 10px;
+        }
+        .planner-form {
+            margin-bottom: 20px;
+        }
+        .planner-item {
+            background: white;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .planner-controls {
+            display: grid;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .planner-controls select,
+        .planner-controls input,
+        .planner-controls textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .planner-controls textarea {
+            min-height: 60px;
+            resize: vertical;
+        }
+        .planner-controls button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .planner-controls button:hover {
+            background-color: #45a049;
+        }
+        .planner-list {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .planner-item .actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .planner-item .actions button {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .planner-item .actions .edit {
+            background-color: #2196F3;
+            color: white;
+        }
+        .planner-item .actions .delete {
+            background-color: #f44336;
+            color: white;
+        }
+        .planner-item h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        .planner-item p {
+            margin: 5px 0;
+            color: #666;
+        }
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 20px;
+        }
+        select, input {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        .calendar {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        .calendar th {
+            background-color: #f2f2f2;
+            padding: 10px;
+            text-align: center;
+        }
+        .calendar td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            width: 12.5%;
+            height: 80px;
+            vertical-align: top;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .calendar td:hover {
+            background-color: #f9f9f9;
+        }
+        .calendar td.selected {
+            background-color: #e6f2ff;
+        }
+        .calendar td.week-cell {
+            width: 8%;
+            background-color: #f2f2f2;
+            text-align: center;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .calendar td.week-cell:hover {
+            background-color: #e0e0e0;
+        }
+        .calendar td.week-cell.selected {
+            background-color: #d4e6ff;
+        }
+        .calendar .date {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .calendar .comm-count {
+            font-size: 12px;
+            color: #666;
+        }
+        .calendar .comm-types {
+            font-size: 11px;
+            margin-top: 3px;
+        }
+        .calendar .other-month {
+            color: #ccc;
+        }
+        .chart-container {
+            margin-top: 20px;
+            height: 300px;
+            margin-bottom: 60px;
+        }
+        .week-stats {
+            margin-top: 40px;
+            padding: 15px;
+            background-color: #f8f8f8;
+            border-radius: 5px;
+            clear: both;
+        }
+        .week-stats h3 {
+            margin-top: 0;
+        }
+        .empty-cell {
+            background-color: #f9f9f9;
+        }
+        .comparison-stats {
+            margin-top: 40px;
+            padding: 15px;
+            background-color: #f8f8f8;
+            border-radius: 5px;
+            clear: both;
+        }
+        .comparison-stats h3 {
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+        #comparison-analysis {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: white;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        #comparison-analysis table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        #comparison-analysis th,
+        #comparison-analysis td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        #comparison-analysis th {
+            background-color: #f5f5f5;
+        }
+        .achievement-indicator {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .achievement-met {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .achievement-partial {
+            background-color: #FFC107;
+            color: black;
+        }
+        .achievement-low {
+            background-color: #f44336;
+            color: white;
+        }
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: white;
+            margin: 15% auto;
+            padding: 20px;
+            border-radius: 5px;
+            width: 400px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .modal-content h3 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .task-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .task-label {
+            font-weight: bold;
+        }
+        .task-input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+        .modal-content button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            min-width: 100px;
+        }
+        .modal-content button.save {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .modal-content button.cancel {
+            background-color: #f44336;
+            color: white;
+        }
+        .current-totals {
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+        }
+        .error {
+            color: red;
+            font-size: 12px;
+            margin-bottom: 10px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-main">
+        <h1>Internal Communications Dashboard</h1>
+        
+        <div class="controls">
+            <div>
+                <label for="year">Year:</label>
+                <select id="year">
+                    <option value="2024">2024</option>
+                    <option value="2025" selected>2025</option>
+                    <option value="2026">2026</option>
+                </select>
+            </div>
+            <div>
+                <label for="month">Month:</label>
+                <select id="month">
+                    <option value="0">January</option>
+                    <option value="1">February</option>
+                    <option value="2">March</option>
+                    <option value="3" selected>April</option>
+                    <option value="4">May</option>
+                    <option value="5">June</option>
+                    <option value="6">July</option>
+                    <option value="7">August</option>
+                    <option value="8">September</option>
+                    <option value="9">October</option>
+                    <option value="10">November</option>
+                    <option value="11">December</option>
+                </select>
+            </div>
+        </div>
+        
+        <table class="calendar" id="calendar">
+            <thead>
+                <tr>
+                    <th>Week</th>
+                    <th>Sunday</th>
+                    <th>Monday</th>
+                    <th>Tuesday</th>
+                    <th>Wednesday</th>
+                    <th>Thursday</th>
+                    <th>Friday</th>
+                    <th>Saturday</th>
+                </tr>
+            </thead>
+            <tbody id="calendar-body">
+                <!-- Calendar cells will be generated here -->
+            </tbody>
+        </table>
+        
+        <div class="chart-container">
+            <h2 id="chart-title">Communications for Selected Date</h2>
+            <canvas id="commChart"></canvas>
+        </div>
+        
+        <div class="week-stats">
+            <h3>Weekly Activity Analysis</h3>
+            <div id="week-analysis"></div>
+        </div>
+
+        <div class="comparison-stats">
+            <h3>Monthly Plan vs Achievement</h3>
+            <div class="chart-container">
+                <canvas id="comparisonChart"></canvas>
+            </div>
+            <div id="comparison-analysis"></div>
+        </div>
+    </div>
+
+    <div class="planner-section">
+        <h2>Planner for the Month</h2>
+        <div class="planner-form">
+            <div class="planner-controls">
+                <select id="plannerActivityType">
+                    <option value="A">Activity A</option>
+                    <option value="B">Activity B</option>
+                    <option value="C">Activity C</option>
+                    <option value="D">Activity D</option>
+                    <option value="E">Activity E</option>
+                    <option value="F">Activity F</option>
+                </select>
+                <input type="number" id="plannerQuantity" placeholder="Number of activities" min="1">
+                <textarea id="plannerDescription" placeholder="Describe what you plan to do..."></textarea>
+                <button onclick="addPlannerItem()">Add to Plan</button>
+            </div>
+        </div>
+        <div class="planner-list" id="plannerList">
+            <!-- Planner items will be added here -->
+        </div>
+    </div>
+
+    <!-- Modal for entering communications -->
+    <div id="commModal" class="modal">
+        <div class="modal-content">
+            <h3>Enter Communications</h3>
+            <div class="current-totals" id="currentTotals">
+                No communications added yet
+            </div>
+            <div class="task-grid">
+                <div class="task-label">Type A:</div>
+                <input type="number" id="commCount_A" class="task-input" min="0" value="0">
+                
+                <div class="task-label">Type B:</div>
+                <input type="number" id="commCount_B" class="task-input" min="0" value="0">
+                
+                <div class="task-label">Type C:</div>
+                <input type="number" id="commCount_C" class="task-input" min="0" value="0">
+                
+                <div class="task-label">Type D:</div>
+                <input type="number" id="commCount_D" class="task-input" min="0" value="0">
+                
+                <div class="task-label">Type E:</div>
+                <input type="number" id="commCount_E" class="task-input" min="0" value="0">
+                
+                <div class="task-label">Type F:</div>
+                <input type="number" id="commCount_F" class="task-input" min="0" value="0">
+            </div>
+            <div class="error" id="commError">Please enter valid numbers</div>
+            <div class="button-group">
+                <button class="cancel" onclick="closeModal()">Cancel</button>
+                <button class="save" onclick="saveAllCommunications()">Save All</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <script>
+        // Initialize data storage - move this to the top
+        var communicationsData = {};
+        var monthlyPlanner = {};
+        var commChart = null;
+
+        // Load saved data from localStorage
+        function loadSavedData() {
+            try {
+                const savedComms = localStorage.getItem('communicationsData');
+                const savedPlanner = localStorage.getItem('monthlyPlanner');
+                
+                if (savedComms) {
+                    communicationsData = JSON.parse(savedComms);
+                    console.log('Loaded communications data:', communicationsData);
+                }
+                
+                if (savedPlanner) {
+                    monthlyPlanner = JSON.parse(savedPlanner);
+                    console.log('Loaded planner data:', monthlyPlanner);
+                }
+            } catch (e) {
+                console.error('Error loading saved data:', e);
+                // Initialize empty data if there's an error
+                communicationsData = {};
+                monthlyPlanner = {};
+            }
+        }
+
+        function saveToLocalStorage() {
+            try {
+                localStorage.setItem('communicationsData', JSON.stringify(communicationsData));
+                localStorage.setItem('monthlyPlanner', JSON.stringify(monthlyPlanner));
+                console.log('Data saved successfully');
+            } catch (e) {
+                console.error('Error saving data:', e);
+            }
+        }
+
+        function addPlannerItem() {
+            const type = document.getElementById('plannerActivityType').value;
+            const quantity = parseInt(document.getElementById('plannerQuantity').value);
+            const description = document.getElementById('plannerDescription').value.trim();
+            
+            if (!quantity || quantity < 1 || !description) {
+                alert('Please enter both quantity and description');
+                return;
+            }
+            
+            const year = document.getElementById('year').value;
+            const month = parseInt(document.getElementById('month').value) + 1;
+            const plannerKey = `${year}-${month}`;
+            
+            if (!monthlyPlanner[plannerKey]) {
+                monthlyPlanner[plannerKey] = [];
+            }
+            
+            const itemId = Date.now();
+            
+            monthlyPlanner[plannerKey].push({
+                id: itemId,
+                type,
+                quantity,
+                description
+            });
+            
+            saveToLocalStorage();
+            updatePlannerDisplay();
+            
+            // Reset form
+            document.getElementById('plannerQuantity').value = '';
+            document.getElementById('plannerDescription').value = '';
+        }
+
+        function deletePlannerItem(plannerKey, itemId) {
+            monthlyPlanner[plannerKey] = monthlyPlanner[plannerKey].filter(item => item.id !== itemId);
+            saveToLocalStorage();
+            updatePlannerDisplay();
+        }
+
+        function editPlannerItem(plannerKey, itemId) {
+            const item = monthlyPlanner[plannerKey].find(item => item.id === itemId);
+            if (item) {
+                document.getElementById('plannerActivityType').value = item.type;
+                document.getElementById('plannerQuantity').value = item.quantity;
+                document.getElementById('plannerDescription').value = item.description;
+                deletePlannerItem(plannerKey, itemId);
+            }
+        }
+
+        function updatePlannerDisplay() {
+            const year = document.getElementById('year').value;
+            const month = parseInt(document.getElementById('month').value) + 1;
+            const plannerKey = `${year}-${month}`;
+            const plannerList = document.getElementById('plannerList');
+            
+            plannerList.innerHTML = '';
+            
+            if (monthlyPlanner[plannerKey]) {
+                monthlyPlanner[plannerKey].forEach(item => {
+                    const itemElement = document.createElement('div');
+                    itemElement.className = 'planner-item';
+                    itemElement.innerHTML = `
+                        <h4>Activity ${item.type}</h4>
+                        <p><strong>Quantity:</strong> ${item.quantity}</p>
+                        <p><strong>Description:</strong> ${item.description}</p>
+                        <div class="actions">
+                            <button class="edit" onclick="editPlannerItem('${plannerKey}', ${item.id})">Edit</button>
+                            <button class="delete" onclick="deletePlannerItem('${plannerKey}', ${item.id})">Delete</button>
+                        </div>
+                    `;
+                    plannerList.appendChild(itemElement);
+                });
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load saved data first
+            loadSavedData();
+            
+            const currentDate = new Date();
+            const yearSelect = document.getElementById('year');
+            const monthSelect = document.getElementById('month');
+            
+            yearSelect.value = currentDate.getFullYear();
+            monthSelect.value = currentDate.getMonth();
+            
+            // Generate calendar with saved data
+            generateCalendar(yearSelect.value, parseInt(monthSelect.value));
+            updatePlannerDisplay();
+            addClearDataButton();
+            
+            // Add event listeners for year/month changes
+            yearSelect.addEventListener('change', function() {
+                generateCalendar(this.value, parseInt(monthSelect.value));
+                updatePlannerDisplay();
+            });
+            
+            monthSelect.addEventListener('change', function() {
+                generateCalendar(yearSelect.value, parseInt(this.value));
+                updatePlannerDisplay();
+            });
+        });
+
+        // Add clear data functionality
+        function addClearDataButton() {
+            const controls = document.querySelector('.controls');
+            const clearButton = document.createElement('div');
+            clearButton.innerHTML = `
+                <button onclick="clearAllData()" style="
+                    background-color: #f44336;
+                    color: white;
+                    padding: 8px 16px;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                ">Clear All Data</button>
+            `;
+            controls.appendChild(clearButton);
+        }
+
+        function clearAllData() {
+            if (confirm('Are you sure you want to clear all saved data? This cannot be undone.')) {
+                localStorage.clear();
+                communicationsData = {};
+                monthlyPlanner = {};
+                generateCalendar(document.getElementById('year').value, 
+                               parseInt(document.getElementById('month').value));
+                updatePlannerDisplay();
+                if (commChart) {
+                    commChart.destroy();
+                    commChart = null;
+                }
+            }
+        }
+
+        // Add auto-save for text inputs
+        function setupAutoSave() {
+            const textInputs = document.querySelectorAll('input[type="text"], input[type="number"], textarea');
+            textInputs.forEach(input => {
+                input.addEventListener('change', () => {
+                    saveToLocalStorage();
+                });
+            });
+        }
+
+        // Generate calendar for a specific month and year
+        function generateCalendar(year, month) {
+            console.log(`Generating calendar for ${year}-${month} with data:`, communicationsData);
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const lastMonthDays = new Date(year, month, 0).getDate();
+            
+            const calendarBody = document.getElementById('calendar-body');
+            calendarBody.innerHTML = '';
+            
+            let date = 1;
+            let nextMonthDate = 1;
+            
+            // Calculate how many weeks we need to display
+            const weeksNeeded = Math.ceil((firstDay + daysInMonth) / 7);
+            
+            // Create calendar rows
+            for (let i = 0; i < weeksNeeded; i++) {
+                const row = document.createElement('tr');
+                
+                // Create week cell
+                const weekCell = document.createElement('td');
+                weekCell.classList.add('week-cell');
+                const weekNumber = i + 1;
+                weekCell.textContent = `Week ${weekNumber}`;
+                weekCell.dataset.week = weekNumber;
+                
+                weekCell.onclick = function() {
+                    document.querySelectorAll('.week-cell').forEach(cell => {
+                        cell.classList.remove('selected');
+                    });
+                    this.classList.add('selected');
+                    updateChartForWeek(year, month, weekNumber);
+                };
+                
+                row.appendChild(weekCell);
+                
+                // Create cells for each day of the week
+                for (let j = 0; j < 7; j++) {
+                    const cell = document.createElement('td');
+                    
+                    if (i === 0 && j < firstDay) {
+                        const prevDate = lastMonthDays - (firstDay - j - 1);
+                        cell.innerHTML = `<div class="date other-month">${prevDate}</div>`;
+                        cell.classList.add('empty-cell');
+                    } else if (date > daysInMonth) {
+                        cell.innerHTML = `<div class="date other-month">${nextMonthDate}</div>`;
+                        cell.classList.add('empty-cell');
+                        nextMonthDate++;
+                    } else {
+                        const dateKey = `${year}-${month+1}-${date}`;
+                        const dayData = communicationsData[dateKey] || {};
+                        
+                        let totalComms = 0;
+                        let commTypes = [];
+                        
+                        Object.entries(dayData).forEach(([type, count]) => {
+                            if (count > 0) {
+                                totalComms += count;
+                                commTypes.push(`${type}: ${count}`);
+                            }
+                        });
+                        
+                        cell.innerHTML = `
+                            <div class="date">${date}</div>
+                            <div class="comm-count">${totalComms} communications</div>
+                            <div class="comm-types">${commTypes.join(', ')}</div>
+                        `;
+                        
+                        cell.dataset.date = dateKey;
+                        
+                        // Add click handler
+                        cell.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            document.querySelectorAll('.calendar td').forEach(td => {
+                                td.classList.remove('selected');
+                            });
+                            this.classList.add('selected');
+                            openModal(this.dataset.date);
+                        });
+                        
+                        date++;
+                    }
+                    
+                    row.appendChild(cell);
+                }
+                
+                calendarBody.appendChild(row);
+            }
+            
+            // Update weekly stats after calendar generation
+            calculateWeeklyStats();
+            
+            // Select first day of month by default
+            const firstDayCell = document.querySelector(`td[data-date="${year}-${month+1}-1"]`);
+            if (firstDayCell) {
+                firstDayCell.classList.add('selected');
+                updateChartForDay(`${year}-${month+1}-1`);
+            }
+        }
+        
+        // Modal handling
+        let currentDateKey = null;
+        
+        function openModal(dateKey) {
+            if (!dateKey || typeof dateKey !== 'string') {
+                console.error('Invalid or missing dateKey:', dateKey);
+                return;
+            }
+            currentDateKey = dateKey;
+            const modal = document.getElementById('commModal');
+            const errorDiv = document.getElementById('commError');
+            
+            // Update modal title
+            const modalTitle = modal.querySelector('h3');
+            const date = new Date(dateKey.split('-')[0], dateKey.split('-')[1] - 1, dateKey.split('-')[2]);
+            modalTitle.textContent = `Communications for ${date.toLocaleDateString()}`;
+            
+            // Load existing values
+            const existingData = communicationsData[dateKey] || {};
+            console.log('Loading existing data for date:', dateKey, existingData);
+            
+            ['A', 'B', 'C', 'D', 'E', 'F'].forEach(type => {
+                const input = document.getElementById(`commCount_${type}`);
+                input.value = existingData[type] || 0;
+            });
+            
+            updateModalTotals();
+            modal.style.display = 'block';
+            errorDiv.style.display = 'none';
+        }
+        
+        function closeModal() {
+            const modal = document.getElementById('commModal');
+            modal.style.display = 'none';
+            currentDateKey = null;
+            console.log('Modal closed');
+        }
+        
+        document.getElementById('commModal').addEventListener('click', function(event) {
+            if (event.target === this) {
+                closeModal();
+            }
+        });
+        
+        function saveAllCommunications() {
+            const errorDiv = document.getElementById('commError');
+            let hasError = false;
+            
+            if (!communicationsData[currentDateKey]) {
+                communicationsData[currentDateKey] = {};
+            }
+            
+            ['A', 'B', 'C', 'D', 'E', 'F'].forEach(type => {
+                const input = document.getElementById(`commCount_${type}`);
+                const count = parseInt(input.value);
+                
+                if (isNaN(count) || count < 0) {
+                    hasError = true;
+                    return;
+                }
+                
+                communicationsData[currentDateKey][type] = count;
+            });
+            
+            if (hasError) {
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            errorDiv.style.display = 'none';
+            
+            // Update the calendar cell
+            const cell = document.querySelector(`td[data-date="${currentDateKey}"]`);
+            if (cell) {
+                let totalComms = 0;
+                let commTypes = [];
+                
+                Object.entries(communicationsData[currentDateKey]).forEach(([type, count]) => {
+                    if (count > 0) {
+                        totalComms += count;
+                        commTypes.push(`${type}: ${count}`);
+                    }
+                });
+                
+                const [year, month, day] = currentDateKey.split('-').map(Number);
+                const cellContent = `
+                    <div class="date">${day}</div>
+                    <div class="comm-count">${totalComms} communications</div>
+                    <div class="comm-types">${commTypes.join(', ')}</div>
+                `;
+                cell.innerHTML = cellContent;
+                
+                cell.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    document.querySelectorAll('.calendar td').forEach(td => {
+                        td.classList.remove('selected');
+                    });
+                    this.classList.add('selected');
+                    openModal(this.dataset.date);
+                });
+                
+                updateChartForDay(currentDateKey);
+                calculateWeeklyStats();
+                
+                const selectedWeekCell = document.querySelector('.week-cell.selected');
+                if (selectedWeekCell) {
+                    const weekNumber = parseInt(selectedWeekCell.dataset.week);
+                    updateChartForWeek(year, month - 1, weekNumber);
+                }
+            }
+            
+            saveToLocalStorage();
+            closeModal();
+        }
+        
+        function updateModalTotals() {
+            const totalsDiv = document.getElementById('currentTotals');
+            if (totalsDiv && currentDateKey) {
+                const dayData = communicationsData[currentDateKey] || {};
+                let totalComms = 0;
+                let totalsHtml = '<strong>Current Totals</strong><br>';
+                let hasTotals = false;
+                
+                ['A', 'B', 'C', 'D', 'E', 'F'].forEach(type => {
+                    const count = dayData[type] || 0;
+                    if (count > 0) {
+                        totalComms += count;
+                        hasTotals = true;
+                    }
+                    totalsHtml += `Type ${type}: ${count}<br>`;
+                });
+                
+                if (hasTotals) {
+                    totalsHtml = `<strong>Total Communications: ${totalComms}</strong><br><br>` + totalsHtml;
+                }
+                
+                totalsDiv.innerHTML = hasTotals ? totalsHtml : 'No communications added yet';
+            }
+        }
+        
+        // Update the chart for a specific date
+        function updateChartForDay(dateKey) {
+            console.log(`Updating chart for ${dateKey}`);
+            const chartTitle = document.getElementById('chart-title');
+            chartTitle.textContent = `Communications for ${formatDate(dateKey)}`;
+            
+            const dayData = communicationsData[dateKey] || {};
+            const types = ['A', 'B', 'C', 'D', 'E', 'F'];
+            const values = types.map(type => dayData[type] || 0);
+            
+            console.log('Chart data:', { types, values });
+            
+            const ctx = document.getElementById('commChart').getContext('2d');
+            
+            if (commChart) {
+                commChart.destroy();
+                console.log('Previous chart destroyed');
+            }
+            
+            commChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: types,
+                    datasets: [{
+                        label: 'Number of Communications',
+                        data: values,
+                        backgroundColor: [
+                            'rgba(255, 99, 132, 0.5)',
+                            'rgba(54, 162, 235, 0.5)',
+                            'rgba(255, 206, 86, 0.5)',
+                            'rgba(75, 192, 192, 0.5)',
+                            'rgba(153, 102, 255, 0.5)',
+                            'rgba(255, 159, 64, 0.5)'
+                        ],
+                        borderColor: [
+                            'rgba(255, 99, 132, 1)',
+                            'rgba(54, 162, 235, 1)',
+                            'rgba(255, 206, 86, 1)',
+                            'rgba(75, 192, 192, 1)',
+                            'rgba(153, 102, 255, 1)',
+                            'rgba(255, 159, 64, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    },
+                    maintainAspectRatio: false,
+                    responsive: true
+                }
+            });
+            console.log('New chart created');
+        }
+        
+        // Update the chart for a whole week
+        function updateChartForWeek(year, month, weekNumber) {
+            console.log(`Updating chart for Week ${weekNumber}`);
+            const chartTitle = document.getElementById('chart-title');
+            chartTitle.textContent = `Communications for Week ${weekNumber}`;
+            
+            const firstDayOfMonth = new Date(year, month, 1);
+            const dayOffset = firstDayOfMonth.getDay();
+            const startDay = (weekNumber - 1) * 7 + 1 - dayOffset;
+            const endDay = weekNumber * 7 - dayOffset;
+            
+            const types = ['A', 'B', 'C', 'D', 'E', 'F'];
+            const weekData = {};
+            types.forEach(type => {
+                weekData[type] = 0;
+            });
+            
+            for (let day = startDay; day <= endDay; day++) {
+                if (day > 0 && day <= new Date(year, month + 1, 0).getDate()) {
+                    const dateKey = `${year}-${month+1}-${day}`;
+                    const dayData = communicationsData[dateKey] || {};
+                    types.forEach(type => {
+                        weekData[type] += (dayData[type] || 0);
+                    });
+                }
+            }
+            
+            const values = types.map(type => weekData[type]);
+            
+            const ctx = document.getElementById('commChart').getContext('2d');
+            
+            if (commChart) {
+                commChart.destroy();
+            }
+            
+            commChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: types,
+                    datasets: [{
+                        label: 'Number of Communications',
+                        data: values,
+                        backgroundColor: [
+                            'rgba(255, 99, 132, 0.5)',
+                            'rgba(54, 162, 235, 0.5)',
+                            'rgba(255, 206, 86, 0.5)',
+                            'rgba(75, 192, 192, 0.5)',
+                            'rgba(153, 102, 255, 0.5)',
+                            'rgba(255, 159, 64, 0.5)'
+                        ],
+                        borderColor: [
+                            'rgba(255, 99, 132, 1)',
+                            'rgba(54, 162, 235, 1)',
+                            'rgba(255, 206, 86, 1)',
+                            'rgba(75, 192, 192, 1)',
+                            'rgba(153, 102, 255, 1)',
+                            'rgba(255, 159, 64, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        }
+                    },
+                    maintainAspectRatio: false
+                }
+            });
+            
+            const analysisSectionTitle = document.querySelector('.week-stats h3');
+            analysisSectionTitle.textContent = `Weekly Analysis - Week ${weekNumber}`;
+            
+            const weekAnalysis = document.getElementById('week-analysis');
+            
+            let totalWeekComms = 0;
+            types.forEach(type => {
+                totalWeekComms += weekData[type];
+            });
+            
+            let weekDateRange = "";
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            let weekStartDay = Math.max(1, startDay);
+            let weekEndDay = Math.min(daysInMonth, endDay);
+            
+            if (weekStartDay <= 0) {
+                const prevMonth = month === 0 ? 11 : month - 1;
+                const prevYear = month === 0 ? year - 1 : year;
+                const prevMonthDays = new Date(prevYear, prevMonth + 1, 0).getDate();
+                weekStartDay = prevMonthDays + weekStartDay;
+                weekDateRange = `${formatDateShort(prevYear, prevMonth, weekStartDay)} - `;
+            } else {
+                weekDateRange = `${formatDateShort(year, month, weekStartDay)} - `;
+            }
+            
+            if (weekEndDay > daysInMonth) {
+                const nextMonth = month === 11 ? 0 : month + 1;
+                const nextYear = month === 11 ? year + 1 : year;
+                weekEndDay = weekEndDay - daysInMonth;
+                weekDateRange += formatDateShort(nextYear, nextMonth, weekEndDay);
+            } else {
+                weekDateRange += formatDateShort(year, month, weekEndDay);
+            }
+            
+            let analysisHTML = `
+                <p><strong>Date Range:</strong> ${weekDateRange}</p>
+                <p><strong>Total Communications:</strong> ${totalWeekComms}</p>
+                <p><strong>Breakdown by Type:</strong></p>
+                <ul>
+            `;
+            
+            types.forEach(type => {
+                if (weekData[type] > 0) {
+                    const percentage = totalWeekComms > 0 ? ((weekData[type] / totalWeekComms) * 100).toFixed(1) : 0;
+                    analysisHTML += `<li>Type ${type}: ${weekData[type]} (${percentage}%)</li>`;
+                }
+            });
+            
+            analysisHTML += `</ul>`;
+            
+            if (totalWeekComms > 0) {
+                analysisHTML += `<p><strong>Daily Distribution:</strong></p><ul>`;
+                const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                
+                for (let day = startDay; day <= endDay; day++) {
+                    if (day > 0 && day <= daysInMonth) {
+                        const date = new Date(year, month, day);
+                        const dayName = dayNames[date.getDay()];
+                        const dateKey = `${year}-${month+1}-${day}`;
+                        const dayData = communicationsData[dateKey] || {};
+                        let dailyTotal = 0;
+                        types.forEach(type => {
+                            dailyTotal += (dayData[type] || 0);
+                        });
+                        analysisHTML += `<li>${dayName}, ${formatDateShort(year, month, day)}: ${dailyTotal} communications</li>`;
+                    }
+                }
+                analysisHTML += `</ul>`;
+            }
+            
+            weekAnalysis.innerHTML = analysisHTML;
+        }
+        
+        // Format date for display
+        function formatDate(dateKey) {
+            const [year, month, day] = dateKey.split('-');
+            const date = new Date(year, month - 1, day);
+            return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        }
+        
+        // Format date shorter
+        function formatDateShort(year, month, day) {
+            const date = new Date(year, month, day);
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+        
+        // Calculate weekly stats
+        function calculateWeeklyStats() {
+            const year = document.getElementById('year').value;
+            const month = parseInt(document.getElementById('month').value);
+            
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const weeks = {};
+            
+            for (let day = 1; day <= daysInMonth; day++) {
+                const date = new Date(year, month, day);
+                const weekNumber = Math.ceil((day + (new Date(year, month, 1).getDay())) / 7);
+                const dateKey = `${year}-${month+1}-${day}`;
+                const dayData = communicationsData[dateKey] || {};
+                
+                if (!weeks[weekNumber]) {
+                    weeks[weekNumber] = {
+                        total: 0,
+                        types: { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0 }
+                    };
+                }
+                
+                Object.keys(dayData).forEach(type => {
+                    const count = dayData[type];
+                    weeks[weekNumber].total += count;
+                    weeks[weekNumber].types[type] += count;
+                });
+            }
+            
+            let mostActiveWeek = 0;
+            let mostActiveCount = -1;
+            
+            Object.keys(weeks).forEach(weekNum => {
+                if (weeks[weekNum].total > mostActiveCount) {
+                    mostActiveCount = weeks[weekNum].total;
+                    mostActiveWeek = weekNum;
+                }
+            });
+            
+            const weekAnalysis = document.getElementById('week-analysis');
+            let weekStats = '<p><strong>Communications by Week:</strong></p>';
+            weekStats += '<ul>';
+            
+            Object.keys(weeks).sort((a, b) => a - b).forEach(weekNum => {
+                const week = weeks[weekNum];
+                const isActive = weekNum == mostActiveWeek;
+                weekStats += `<li>Week ${weekNum}: ${week.total} communications ${isActive ? '(Most Active)' : ''}</li>`;
+            });
+            
+            weekStats += '</ul>';
+            
+            if (mostActiveWeek > 0) {
+                weekStats += `<p><strong>Most Active Week:</strong> Week ${mostActiveWeek} with ${mostActiveCount} communications</p>`;
+                const activeWeekTypes = weeks[mostActiveWeek].types;
+                let typeBreakdown = '<p><strong>Breakdown by type:</strong> ';
+                typeBreakdown += Object.keys(activeWeekTypes)
+                    .filter(type => activeWeekTypes[type] > 0)
+                    .map(type => `${type}: ${activeWeekTypes[type]}`)
+                    .join(', ');
+                typeBreakdown += '</p>';
+                weekStats += typeBreakdown;
+            }
+            
+            weekAnalysis.innerHTML = weekStats;
+        }
+
+        // Initialize comparison chart
+        let comparisonChart = null;
+
+        function updateComparisonChart() {
+            const year = document.getElementById('year').value;
+            const month = parseInt(document.getElementById('month').value) + 1;
+            const plannerKey = `${year}-${month}`;
+            
+            // Get planned activities
+            const plannedActivities = {A: 0, B: 0, C: 0, D: 0, E: 0, F: 0};
+            if (monthlyPlanner[plannerKey]) {
+                monthlyPlanner[plannerKey].forEach(item => {
+                    plannedActivities[item.type] += item.quantity;
+                });
+            }
+
+            // Get achieved activities
+            const achievedActivities = {A: 0, B: 0, C: 0, D: 0, E: 0, F: 0};
+            const daysInMonth = new Date(year, month, 0).getDate();
+            
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateKey = `${year}-${month}-${day}`;
+                const dayData = communicationsData[dateKey] || {};
+                Object.entries(dayData).forEach(([type, count]) => {
+                    achievedActivities[type] += count;
+                });
+            }
+
+            // Prepare chart data
+            const types = ['A', 'B', 'C', 'D', 'E', 'F'];
+            const plannedData = types.map(type => plannedActivities[type]);
+            const achievedData = types.map(type => achievedActivities[type]);
+
+            // Create or update chart
+            const ctx = document.getElementById('comparisonChart').getContext('2d');
+            
+            if (comparisonChart) {
+                comparisonChart.destroy();
+            }
+
+            comparisonChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: types.map(type => `Type ${type}`),
+                    datasets: [
+                        {
+                            label: 'Planned',
+                            data: plannedData,
+                            backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Achieved',
+                            data: achievedData,
+                            backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    },
+                    maintainAspectRatio: false,
+                    responsive: true
+                }
+            });
+
+            // Update analysis text
+            const analysisDiv = document.getElementById('comparison-analysis');
+            let analysisHTML = '<h4>Achievement Analysis</h4>';
+            analysisHTML += '<table><tr><th>Activity Type</th><th>Planned</th><th>Achieved</th><th>Achievement Rate</th></tr>';
+
+            types.forEach(type => {
+                const planned = plannedActivities[type];
+                const achieved = achievedActivities[type];
+                const rate = planned > 0 ? (achieved / planned * 100) : (achieved > 0 ? 100 : 0);
+                let indicatorClass = 'achievement-met';
+                
+                if (planned > 0) {
+                    if (rate < 50) {
+                        indicatorClass = 'achievement-low';
+                    } else if (rate < 100) {
+                        indicatorClass = 'achievement-partial';
+                    }
+                }
+
+                analysisHTML += `
+                    <tr>
+                        <td>Type ${type}</td>
+                        <td>${planned}</td>
+                        <td>${achieved}</td>
+                        <td><span class="achievement-indicator ${indicatorClass}">
+                            ${rate.toFixed(1)}%
+                        </span></td>
+                    </tr>
+                `;
+            });
+
+            analysisHTML += '</table>';
+            analysisDiv.innerHTML = analysisHTML;
+        }
+
+        // Update comparison chart when month/year changes or when data is updated
+        document.getElementById('year').addEventListener('change', updateComparisonChart);
+        document.getElementById('month').addEventListener('change', updateComparisonChart);
+
+        // Update comparison chart after saving communications
+        const originalSaveAllCommunications = saveAllCommunications;
+        saveAllCommunications = function() {
+            originalSaveAllCommunications();
+            updateComparisonChart();
+        };
+
+        // Update comparison chart after adding/editing planner items
+        const originalAddPlannerItem = addPlannerItem;
+        addPlannerItem = function() {
+            originalAddPlannerItem();
+            updateComparisonChart();
+        };
+
+        // Initialize comparison chart on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            const existingCallback = this.onload;
+            this.onload = function() {
+                if (existingCallback) existingCallback();
+                updateComparisonChart();
+            };
+        });
+    </script>
+</body>
+</html>
